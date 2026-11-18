@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.vite/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+training/data/
+training/output/
+logs/
+public/models/*.onnx
+public/models/metadata.json
+Thumbs.db
