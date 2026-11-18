@@ -3,7 +3,8 @@ import type {AnalysisRecord,ModelMetadata} from "./types";
 import {diagnostics} from "./lib/logger";
 import {loadModel,predict} from "./lib/model";
 import {calculateWeightedScore,toScoredRecords} from "./lib/scoring";
-const makeRecord=():AnalysisRecord=>({id:crypto.randomUUID(),date:new Date().toISOString().slice(0,10),locomotiveNumber:"1501",previousStatus:"1",daysSinceFailure:"7",repairHours:"5",repairCost:"10"});
+const localDate=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
+const makeRecord=():AnalysisRecord=>({id:crypto.randomUUID(),date:localDate(),locomotiveNumber:"1501",previousStatus:"1",daysSinceFailure:"7",repairHours:"5",repairCost:"10"});
 export default function App(){
  const [records,setRecords]=useState<AnalysisRecord[]>([makeRecord()]);
  const [metadata,setMetadata]=useState<ModelMetadata|null>(null);
