@@ -31,7 +31,7 @@ export default function App(){
    const ordered=[...records].sort((a,b)=>a.date.localeCompare(b.date));
    const features=ordered.map(r=>[Number(r.previousStatus),Number(r.daysSinceFailure),Number(r.repairHours),Number(r.repairCost)]);
    diagnostics.info("INPUT_VALIDATION_SUCCEEDED",{count:ordered.length,locomotives:[...new Set(ordered.map(r=>r.locomotiveNumber))],dates:ordered.map(r=>r.date),featureOrder:["previousStatus","daysSinceFailure","repairHours","repairCost"]});
-   const predictions=await predict(features);const output=ordered.map((r,i)=>({...r,prediction:predictions[i]}));setRecords(output);
+   const modelInfo=await loadModel();setMetadata(modelInfo.metadata);setStatus("ready");const predictions=await predict(features);const output=ordered.map((r,i)=>({...r,prediction:predictions[i]}));setRecords(output);
    const scored=toScoredRecords(output);const finalScore=calculateWeightedScore(scored);setScore(finalScore);
    diagnostics.info("WEIGHTED_SCORE_CALCULATED",{formula:"sum((index+1)*prediction)/sum(1..n)",rows:scored.map(({date,locomotiveNumber,prediction,weight})=>({date,locomotiveNumber,prediction,weight})),denominator:scored.length*(scored.length+1)/2,finalScore});
   }catch(e){const msg=e instanceof Error?e.message:String(e);setError(msg);diagnostics.error("ANALYSIS_FAILED",{message:msg,stack:e instanceof Error?e.stack:undefined});}
