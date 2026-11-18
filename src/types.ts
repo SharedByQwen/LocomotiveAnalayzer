@@ -1,0 +1,3 @@
+export interface AnalysisRecord { id:string; date:string; locomotiveNumber:string; previousStatus:string; daysSinceFailure:string; repairHours:string; repairCost:string; prediction?:number; }
+export interface ModelMetadata { model_name:string; model_version:string; algorithm:string; features:string[]; target:string; input_name?:string; training_rows?:number; test_rows?:number; metrics?:{mae?:number;rmse?:number;r2?:number}; dataset_is_synthetic?:boolean; warning?:string; }
+export interface DiagnosticEntry { timestamp:string; level:"INFO"|"WARN"|"ERROR"; event:string; runId:string; details?:Record<string,unknown>; }
