@@ -207,6 +207,8 @@ def train(dataset_path: Path) -> None:
         "target": TARGET,
         "input_name": "features",
         "final_fit_rows": int(len(x)),
+        "training_rows": int(len(x)),
+        "test_rows": int(len(x_test)),
         "evaluation_train_rows": int(len(x_train)),
         "evaluation_test_rows": int(len(x_test)),
         "evaluation_method": "random_train_test_split",
