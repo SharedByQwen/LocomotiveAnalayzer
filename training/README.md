@@ -1,15 +1,54 @@
-# Model training
+# آموزش و ارزیابی مدل
 
-The script reads the workbook sheet named گزارش روزانه.
+## داده و ورودی‌ها
 
-Only four columns are model inputs, in this exact order:
+اسکریپت فایل Excel را از شیت `گزارش روزانه` می‌خواند.
+
+چهار ویژگی مدل دقیقاً با این ترتیب استفاده می‌شوند:
 1. وضعیت سیر قبل (۱=سالم، ۰=خراب)
 2. روز از آخرین خرابی در سیر
 3. زمان تعمیرات امروز (ساعت)
 4. هزینه تعمیر (یورو)
 
-Target: قابلیت سیر امروز.
+هدف: قابلیت سیر امروز.
 
-Date columns and locomotive number are deliberately excluded from model features. The script uses a deterministic random 80/20 train/test split and reports MAE, RMSE and R². ONNX model and metadata are written to public/models.
+تاریخ و شماره لکوموتیو عمداً از ویژگی‌های مدل حذف شده‌اند؛ تاریخ فقط در نرم‌افزار برای مرتب‌سازی رکوردهای ورودی کاربرد دارد و شماره لکوموتیو شناسه است.
 
-The supplied workbook guide describes its data as synthetic/random. Do not interpret test metrics as evidence of operational predictive accuracy.
+## روش ارزیابی و آموزش نهایی
+
+1. داده‌های معتبر به‌صورت تصادفی و با seed ثابت به ۸۰٪ آموزش و ۲۰٪ آزمون تقسیم می‌شوند.
+2. یک RandomForestRegressor فقط با ۸۰٪ آموزش داده می‌شود.
+3. روی ۲۰٪ کنارگذاشته‌شده MAE، RMSE و R² محاسبه می‌شوند.
+4. یک DummyRegressor مبتنی بر میانگین نیز روی همان بخش آزمون سنجیده می‌شود تا مقایسه با پیش‌بینی ساده ممکن باشد.
+5. پس از ثبت معیارهای ارزیابی، یک RandomForestRegressor تازه با تمام ردیف‌های معتبر آموزش داده می‌شود و همین مدل نهایی به ONNX تبدیل می‌شود.
+
+بنابراین معیارها مربوط به مدل مرحله ارزیابی هستند، نه سنجش مستقل مدل نهایی. مدل نهایی از تمام داده‌های موجود استفاده می‌کند.
+
+## فایل‌های خروجی
+
+- `public/models/locomotive_model.onnx`: مدل نهایی برای اجرای داخل مرورگر
+- `public/models/metadata.json`: مشخصات مدل و معیارهای ارزیابی
+- `training/output/evaluation_report.json`: گزارش کامل ارزیابی و مقایسه با baseline
+- `training/output/evaluation_predictions.csv`: مقدار واقعی، پیش‌بینی و خطای هر ردیف آزمون
+- `logs/training.log`: گزارش اجرای آموزش و خطاها
+- `logs/training_environment.log`: گزارش نسخه Python و کتابخانه‌های نصب‌شده
+
+## اجرای پیشنهادی در Windows
+
+1. Python 3.11 نسخه ۶۴ بیتی را نصب کن.
+2. فایل `LocomotivDataSet.xlsx` را در `training/data/` قرار بده.
+3. یک بار `scripts/setup_training_windows.bat` را اجرا کن.
+4. برای اجرای تشخیص محیط و آموزش، `scripts/run_training_pipeline_windows.bat` را اجرا کن.
+
+برای اجرای مجدد پس از تغییر داده‌ها، مرحله نصب را تکرار نکن؛ فقط pipeline را اجرا کن.
+
+## سخت‌افزار پیشنهادی
+
+- حداقل عملی پیشنهادی: پردازنده ۴ هسته‌ای، RAM برابر ۸ گیگابایت و فضای خالی SSD حدود ۲ گیگابایت
+- پیشنهاد راحت‌تر: RAM برابر ۱۶ گیگابایت و SSD
+- GPU لازم نیست؛ آموزش با CPU انجام می‌شود.
+- زمان آموزش به پردازنده و نسخه کتابخانه‌ها وابسته است و قبل از اجرای واقعی نمی‌توان زمان دقیقی تضمین کرد.
+
+## محدودیت اعتبار
+
+راهنمای فایل Excel فعلی داده‌ها را مصنوعی/تصادفی معرفی می‌کند. بنابراین حتی اگر MAE و RMSE ظاهراً مناسب یا R² بالا باشند، این معیارها اعتبار پیش‌بینی خرابی واقعی لکوموتیو را ثابت نمی‌کنند. برای اعتبارسنجی عملیاتی باید داده‌های واقعی، برچسب‌های قابل اتکا و آزمون مستقل زمانی/لکوموتیوی داشته باشیم.
