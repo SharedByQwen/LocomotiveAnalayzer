@@ -55,7 +55,7 @@ def train(path: Path):
     logging.info("EVALUATION | test_rows=%d mae=%.6f rmse=%.6f r2=%.6f", len(x_test), mae, rmse, r2)
     out = ROOT / "public" / "models"
     out.mkdir(parents=True, exist_ok=True)
-    onx = convert_sklearn(model, initial_types=[("features", FloatTensorType([None, 4]))], target_opset=17, options={id(model): {"zipmap": False}})
+    onx = convert_sklearn(model, initial_types=[("features", FloatTensorType([None, 4]))], target_opset=17)
     model_path = out / "locomotive_model.onnx"
     model_path.write_bytes(onx.SerializeToString())
     metadata = {"model_name":"locomotive-capability-regressor","model_version":"0.1.0","created_at_utc":datetime.now(timezone.utc).isoformat(),"algorithm":"RandomForestRegressor","features":FEATURES,"target":TARGET,"input_name":"features","training_rows":int(len(x_train)),"test_rows":int(len(x_test)),"metrics":{"mae":mae,"rmse":rmse,"r2":r2},"dataset_file":path.name,"dataset_is_synthetic":True,"warning":"Workbook documentation describes this dataset as synthetic/random; metrics do not establish real-world predictive validity."}
