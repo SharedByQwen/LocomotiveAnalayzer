@@ -1,7 +1,7 @@
 import {useMemo,useState} from "react";
 import type {AnalysisRecord,ModelMetadata} from "./types";
 import {diagnostics} from "./lib/logger";
-import {loadModel,predict} from "./lib/model";
+import {loadModel,predict,uploadModelZip} from "./lib/model";
 import {calculateWeightedScore,toScoredRecords} from "./lib/scoring";
 const localDate=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
 const makeRecord=():AnalysisRecord=>({id:crypto.randomUUID(),date:localDate(),locomotiveNumber:"1501",previousStatus:"1",daysSinceFailure:"7",repairHours:"5",repairCost:"10"});
@@ -15,6 +15,7 @@ export default function App(){
  function add(){setRecords(old=>[...old,makeRecord()]);setScore(null);}
  function remove(id:string){setRecords(old=>old.length>1?old.filter(r=>r.id!==id):old);setScore(null);}
  async function checkModel(){setStatus("loading");setError("");try{const m=await loadModel();setMetadata(m.metadata);setStatus("ready");}catch(e){const msg=e instanceof Error?e.message:String(e);setError(msg);setStatus("error");diagnostics.error("MODEL_STATUS_ERROR",{message:msg});}}
+ async function handleModelZip(file?:File){if(!file)return;setStatus("loading");setError("");try{await uploadModelZip(file);const m=await loadModel();setMetadata(m.metadata);setStatus("ready");diagnostics.info("MODEL_INSTALL_SUCCEEDED",{fileName:file.name});}catch(e){const msg=e instanceof Error?e.message:String(e);setError(msg);setStatus("error");diagnostics.error("MODEL_INSTALL_FAILED",{message:msg});}}
  function validate():string|null{
   if(!records.length)return "حداقل یک رکورد لازم است.";
   for(const [i,r] of records.entries()){
@@ -42,7 +43,7 @@ export default function App(){
  return <main className="shell">
   <header className="header"><div><div className="eyebrow">LOCAL ANALYSIS WORKSPACE</div><h1>تحلیلگر قابلیت سیر لکوموتیو</h1><p>ورود رکوردهای مستقل، پیش‌بینی مدل و محاسبه امتیاز نهایی</p></div><div className={"status "+status}>{status==="ready"?"مدل آماده است":status==="loading"?"در حال بارگذاری":status==="error"?"خطای مدل":"وضعیت مدل بررسی نشده"}</div></header>
   <section className="warning"><b>توجه:</b> راهنمای دیتاست فعلی آن را مصنوعی و تصادفی معرفی می‌کند؛ خروجی فعلی برای آزمایش فنی نرم‌افزار است و اعتبار عملیاتی ندارد.</section>
-  <section className="panel model"><div><h2>وضعیت مدل</h2><p>{metadata?metadata.algorithm+" · نسخه "+metadata.model_version+" · "+(metadata.training_rows??"?")+" رکورد آموزشی":"مدل ONNX باید در پوشه public/models قرار داشته باشد."}</p>{metadata?.metrics&&<p>MAE {metadata.metrics.mae?.toFixed(4)} · RMSE {metadata.metrics.rmse?.toFixed(4)} · R² {metadata.metrics.r2?.toFixed(4)}</p>}</div><button className="secondary" onClick={checkModel} disabled={status==="loading"}>بررسی / بارگذاری مدل</button></section>
+  <section className="panel model"><div><h2>وضعیت مدل</h2><p>{metadata?metadata.algorithm+" · نسخه "+metadata.model_version+" · "+(metadata.training_rows??"?")+" رکورد آموزشی":"مدل ONNX باید در پوشه public/models قرار داشته باشد."}</p>{metadata?.metrics&&<p>MAE {metadata.metrics.mae?.toFixed(4)} · RMSE {metadata.metrics.rmse?.toFixed(4)} · R² {metadata.metrics.r2?.toFixed(4)}</p>}</div><div className="model-actions"><button className="secondary" onClick={checkModel} disabled={status==="loading"}>بررسی وضعیت مدل</button><label className="secondary upload-label">نصب مدل از ZIP<input type="file" accept=".zip,application/zip" onChange={e=>{void handleModelZip(e.target.files?.[0]);e.currentTarget.value="";}} disabled={status==="loading"}/></label></div></section>
   <div className="section-title"><div><h2>رکوردهای تحلیل</h2><p>تاریخ فقط برای مرتب‌سازی است؛ شماره لکوموتیو فقط شناسه است. مدل فقط چهار ویژگی زیر را دریافت می‌کند.</p></div><button className="secondary" onClick={add}>＋ افزودن رکورد</button></div>
   <div className="records">{records.map((r,i)=><article className="record" key={r.id}><div className="record-title"><b>رکورد {i+1}</b>{r.prediction!==undefined&&<span className="chip">پیش‌بینی: {r.prediction.toFixed(5)}</span>}<button className="remove" onClick={()=>remove(r.id)} disabled={records.length===1}>×</button></div><div className="fields">
    <label>تاریخ<input type="date" value={r.date} onChange={e=>update(r.id,"date",e.target.value)}/></label>
