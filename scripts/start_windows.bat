@@ -1,85 +1,115 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0.."
-title Locomotive Analyzer - Setup and Run
+title Locomotive Analyzer
+
+set "MODEL_ZIP=backend\models\model_bundle.zip"
+set "VENV_PY=.venv\Scripts\python.exe"
+set "BACKEND_PID=.backend.pid"
+set "BACKEND_LOG=backend\backend.log"
 
 echo.
-echo ==========================================
-echo       Locomotive Analyzer
-echo       One-step setup and launch
-echo ==========================================
+echo ========================================
+echo        Locomotive Analyzer
+echo ========================================
 echo.
+
+if not exist "%MODEL_ZIP%" (
+  echo [ERROR] Model ZIP not found:
+  echo %CD%\%MODEL_ZIP%
+  echo.
+  echo Put model_bundle.zip in backend\models and run again.
+  pause
+  exit /b 1
+)
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo [ERROR] Node.js is not installed.
-  echo Install Node.js LTS from https://nodejs.org/ and run this file again.
+  echo [ERROR] Node.js LTS is required.
   pause
   exit /b 1
 )
-
 where py >nul 2>nul
 if errorlevel 1 (
-  echo [ERROR] Python launcher was not found.
-  echo Install Python 3.11 or newer and enable the Python Launcher.
+  echo [ERROR] Python 3.11 or newer is required.
   pause
   exit /b 1
 )
 
-echo [1/5] Select the ZIP model exported from Google Colab...
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.OpenFileDialog; $d.Title='Select Locomotive Analyzer model ZIP'; $d.Filter='ZIP model bundle (*.zip)|*.zip'; $d.Multiselect=$false; if($d.ShowDialog() -eq 'OK'){Copy-Item -LiteralPath $d.FileName -Destination '%CD%\backend\models\model_bundle.zip' -Force; exit 0}else{exit 2}"
-if errorlevel 1 (
-  echo [ERROR] No ZIP was selected or the model could not be copied.
-  pause
-  exit /b 1
-)
-echo [OK] ZIP saved to backend\models\model_bundle.zip
-echo.
-
-echo [2/5] Preparing Python environment...
-if not exist ".venv\Scripts\python.exe" (
+echo [1/4] Checking Python environment...
+if not exist "%VENV_PY%" (
   py -3.11 -m venv .venv
   if errorlevel 1 py -3 -m venv .venv
   if errorlevel 1 (
     echo [ERROR] Could not create Python virtual environment.
-    echo Python 3.11 or newer is required.
     pause
     exit /b 1
   )
 )
-call ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r backend\requirements.txt
-if errorlevel 1 (
-  echo [ERROR] Backend dependencies installation failed.
-  pause
-  exit /b 1
+if not exist ".venv\.requirements-installed" (
+  call "%VENV_PY%" -m pip install --disable-pip-version-check -r backend\requirements.txt
+  if errorlevel 1 (
+    echo [ERROR] Python dependency installation failed.
+    pause
+    exit /b 1
+  )
+  type nul > ".venv\.requirements-installed"
+) else (
+  for %%A in (backend\requirements.txt) do for %%B in (.venv\.requirements-installed) do if "%%~tA" GTR "%%~tB" (
+    call "%VENV_PY%" -m pip install --disable-pip-version-check -r backend\requirements.txt
+    if errorlevel 1 (
+      echo [ERROR] Python dependency update failed.
+      pause
+      exit /b 1
+    )
+    type nul > ".venv\.requirements-installed"
+  )
 )
-echo.
 
-echo [3/5] Installing frontend dependencies...
-call npm install
-if errorlevel 1 (
-  echo [ERROR] npm install failed.
-  pause
-  exit /b 1
+echo [2/4] Checking frontend dependencies...
+if not exist "node_modules" (
+  call npm install
+  if errorlevel 1 (
+    echo [ERROR] Frontend dependency installation failed.
+    pause
+    exit /b 1
+  )
+) else if not exist "node_modules\.package-lock.json" (
+  call npm install
+  if errorlevel 1 exit /b 1
+) else (
+  powershell -NoProfile -Command "if((Get-Item package-lock.json).LastWriteTime -gt (Get-Item node_modules/.package-lock.json).LastWriteTime){exit 1}else{exit 0}"
+  if errorlevel 1 (
+    call npm install
+    if errorlevel 1 (
+      echo [ERROR] Frontend dependency update failed.
+      pause
+      exit /b 1
+    )
+  )
 )
-echo.
 
-echo [4/5] Starting backend and checking model...
-start "Locomotive Analyzer Backend" /min cmd /c ""%CD%\.venv\Scripts\python.exe" -m uvicorn backend.app:app --host 127.0.0.1 --port 8000"
+echo [3/4] Starting backend with the local model ZIP...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ok=$false; for($i=0;$i -lt 30;$i++){try{$h=Invoke-RestMethod 'http://127.0.0.1:8000/api/model/status' -TimeoutSec 2; if($h.loaded){$ok=$true; Write-Host ('[OK] Model loaded: '+$h.algorithm+' / '+$h.model_version); break}}catch{}; Start-Sleep -Seconds 1}; if(-not $ok){Write-Host '[ERROR] Backend did not load the model in time.'; exit 1}"
+  "$pidFile='.backend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$p=Get-Process -Id ([int]$old) -ErrorAction SilentlyContinue; if($p){Stop-Process -Id $p.Id -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.log' -RedirectStandardError '%CD%\backend\backend.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
 if errorlevel 1 (
-  echo [ERROR] Backend failed to start or load the ZIP model.
-  echo Check the Backend window for details.
+  echo [ERROR] Could not start backend.
   pause
   exit /b 1
 )
-echo.
 
-echo [5/5] Starting the application...
-echo Open http://127.0.0.1:5173 in your browser.
-echo Keep this window open while using the application.
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ready=$false; for($i=0;$i -lt 45;$i++){try{$s=Invoke-RestMethod 'http://127.0.0.1:8000/api/model/status' -TimeoutSec 2; if($s.loaded){$ready=$true; Write-Host ('[OK] Model ready: '+$s.algorithm); break}}catch{}; Start-Sleep -Seconds 1}; if(-not $ready){Write-Host 'Backend log:'; Get-Content 'backend/backend.log' -Tail 30; exit 1}"
+if errorlevel 1 (
+  echo [ERROR] Model could not be loaded. See backend\backend.log
+  pause
+  exit /b 1
+)
+
+echo [4/4] Starting frontend...
+echo.
+echo Open http://127.0.0.1:5173
+echo Keep this window open while using the app.
 echo.
 call npm run dev
 endlocal
