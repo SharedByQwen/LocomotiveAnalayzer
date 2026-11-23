@@ -99,7 +99,7 @@ if errorlevel 1 (
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ready=$false; for($i=0;$i -lt 45;$i++){try{$s=Invoke-RestMethod 'http://127.0.0.1:8000/api/model/status' -TimeoutSec 2; if($s.loaded){$ready=$true; Write-Host ('[OK] Model ready: '+$s.algorithm); break}}catch{}; Start-Sleep -Seconds 1}; if(-not $ready){Write-Host 'Backend log:'; Get-Content 'backend/backend.log' -Tail 30; exit 1}"
+  "$ready=$false; for($i=0;$i -lt 45;$i++){try{$s=Invoke-RestMethod 'http://127.0.0.1:8000/api/model/status' -TimeoutSec 2; if($s.loaded){$ready=$true; Write-Host ('[OK] Model ready: '+$s.algorithm); break}}catch{}; Start-Sleep -Seconds 1}; if(-not $ready){Write-Host 'Backend log:'; Get-Content 'backend/backend.stdout.log','backend/backend.error.log' -Tail 30; exit 1}"
 if errorlevel 1 (
   echo [ERROR] Model could not be loaded. See backend\backend.log
   pause
