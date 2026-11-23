@@ -45,7 +45,8 @@ if not exist "%VENV_PY%" (
     exit /b 1
   )
 )
-if not exist ".venv\.requirements-installed" (
+powershell -NoProfile -Command "if(!(Test-Path '.venv/.requirements-installed') -or (Get-Item 'backend/requirements.txt').LastWriteTimeUtc -gt (Get-Item '.venv/.requirements-installed').LastWriteTimeUtc){exit 1}else{exit 0}"
+if errorlevel 1 (
   call "%VENV_PY%" -m pip install --disable-pip-version-check -r backend\requirements.txt
   if errorlevel 1 (
     echo [ERROR] Python dependency installation failed.
@@ -53,16 +54,6 @@ if not exist ".venv\.requirements-installed" (
     exit /b 1
   )
   type nul > ".venv\.requirements-installed"
-) else (
-  for %%A in (backend\requirements.txt) do for %%B in (.venv\.requirements-installed) do if "%%~tA" GTR "%%~tB" (
-    call "%VENV_PY%" -m pip install --disable-pip-version-check -r backend\requirements.txt
-    if errorlevel 1 (
-      echo [ERROR] Python dependency update failed.
-      pause
-      exit /b 1
-    )
-    type nul > ".venv\.requirements-installed"
-  )
 )
 
 echo [2/4] Checking frontend dependencies...
@@ -90,7 +81,7 @@ if not exist "node_modules" (
 
 echo [3/4] Starting backend with the local model ZIP...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$pidFile='.backend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$p=Get-Process -Id ([int]$old) -ErrorAction SilentlyContinue; if($p){Stop-Process -Id $p.Id -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.stdout.log' -RedirectStandardError '%CD%\backend\backend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
+  "$pidFile='.backend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*uvicorn backend.app:app*'){Stop-Process -Id ([int]$old) -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.stdout.log' -RedirectStandardError '%CD%\backend\backend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
 if errorlevel 1 (
   echo [ERROR] Could not start backend.
   pause
