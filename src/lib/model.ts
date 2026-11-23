@@ -1,24 +1,52 @@
-import * as ort from "onnxruntime-web";
 import type {ModelMetadata} from "../types";
 import {diagnostics} from "./logger";
-let sessionPromise:Promise<ort.InferenceSession>|null=null; let metadataPromise:Promise<ModelMetadata>|null=null;
-export async function loadModel(){
- if(!sessionPromise){diagnostics.info("MODEL_LOAD_STARTED",{url:"/models/locomotive_model.onnx"});sessionPromise=ort.InferenceSession.create("/models/locomotive_model.onnx",{executionProviders:["wasm"],graphOptimizationLevel:"all"});}
- if(!metadataPromise){metadataPromise=fetch("/models/metadata.json").then(async r=>{if(!r.ok)throw new Error("Metadata request failed: HTTP "+r.status);return await r.json() as ModelMetadata;});}
- try{const [session,metadata]=await Promise.all([sessionPromise,metadataPromise]);diagnostics.info("MODEL_LOAD_SUCCEEDED",{inputs:session.inputNames,outputs:session.outputNames,version:metadata.model_version});return {session,metadata};}
- catch(e){sessionPromise=null;metadataPromise=null;diagnostics.error("MODEL_LOAD_FAILED",{error:e instanceof Error?e.message:String(e)});throw e;}
+
+type ModelStatus = {loaded:boolean; model_name?:string; model_version?:string; algorithm?:string; training_rows?:number; features?:string[]; metrics?:ModelMetadata["metrics"]; message?:string};
+
+async function apiError(response:Response):Promise<Error>{
+  let message = "HTTP " + response.status;
+  try { const body = await response.json(); message = body.detail || message; } catch {}
+  return new Error(message);
 }
+
+export async function loadModel():Promise<{metadata:ModelMetadata}>{
+  const response = await fetch("/api/model/status");
+  if(!response.ok) throw await apiError(response);
+  const status = await response.json() as ModelStatus;
+  if(!status.loaded) throw new Error(status.message || "No model is installed on the backend.");
+  const metadata:ModelMetadata = {
+    model_name:status.model_name || "locomotive-capability-regressor",
+    model_version:status.model_version || "unknown",
+    algorithm:status.algorithm || "unknown",
+    training_rows:status.training_rows,
+    features:status.features || [],
+    target:"",
+    metrics:status.metrics
+  };
+  diagnostics.info("BACKEND_MODEL_READY",{version:metadata.model_version,algorithm:metadata.algorithm});
+  return {metadata};
+}
+
+export async function uploadModelZip(file:File):Promise<void>{
+  const form = new FormData();
+  form.append("file",file);
+  const response = await fetch("/api/model/upload",{method:"POST",body:form});
+  if(!response.ok) throw await apiError(response);
+  diagnostics.info("MODEL_ZIP_UPLOADED",{fileName:file.name,fileSize:file.size});
+}
+
 export async function predict(features:number[][]):Promise<number[]>{
- if(!features.length)return [];
- const {session,metadata}=await loadModel();
- if(metadata.features.length!==4)throw new Error("Model must declare exactly four features.");
- const input=session.inputNames[0], output=session.outputNames[0]; if(!input||!output)throw new Error("ONNX input/output name missing.");
- diagnostics.info("INFERENCE_STARTED",{records:features.length,input,output,featureOrder:metadata.features});
- const tensor=new ort.Tensor("float32",Float32Array.from(features.flat()),[features.length,4]);
- const result=await session.run({[input]:tensor}); const value=result[output];
- if(!value||!("data" in value))throw new Error("ONNX output tensor missing.");
- const values=Array.from(value.data as ArrayLike<number>,Number);
- if(values.length!==features.length||values.some(v=>!Number.isFinite(v)))throw new Error("ONNX returned invalid prediction values.");
- diagnostics.info("INFERENCE_SUCCEEDED",{count:values.length,min:Math.min(...values),max:Math.max(...values)});
- return values;
+  if(!features.length) return [];
+  const response = await fetch("/api/predict",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({records:features})
+  });
+  if(!response.ok) throw await apiError(response);
+  const result = await response.json() as {predictions:number[]};
+  if(!Array.isArray(result.predictions)||result.predictions.length!==features.length||result.predictions.some(v=>!Number.isFinite(v))){
+    throw new Error("Backend returned invalid prediction values.");
+  }
+  diagnostics.info("INFERENCE_SUCCEEDED",{count:result.predictions.length,min:Math.min(...result.predictions),max:Math.max(...result.predictions)});
+  return result.predictions;
 }
