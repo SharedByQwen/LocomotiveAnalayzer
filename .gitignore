@@ -14,3 +14,5 @@ logs/
 public/models/*.onnx
 public/models/metadata.json
 Thumbs.db
+backend/models/*
+!backend/models/.gitkeep
