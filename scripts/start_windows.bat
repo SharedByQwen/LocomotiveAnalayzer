@@ -89,7 +89,7 @@ if errorlevel 1 (
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ready=$false; $limit=900; for($i=0;$i -lt $limit;$i++){try{$s=Invoke-RestMethod 'http://127.0.0.1:8000/api/model/status' -TimeoutSec 2; if($s.loaded){$ready=$true; Write-Host ('[OK] Model ready: '+$s.algorithm); break}}catch{}; if(($i+1)%30 -eq 0){Write-Host ('Waiting for model load... '+($i+1)+'/'+ $limit +' seconds')}; Start-Sleep -Seconds 1}; if(-not $ready){Write-Host 'Backend log:'; Get-Content 'backend/backend.stdout.log','backend/backend.stderr.log' -Tail 80; exit 1}"
+  "$ready=$false; $limit=900; for($i=0;$i -lt $limit;$i++){try{$s=Invoke-RestMethod 'http://127.0.0.1:8000/api/model/status' -TimeoutSec 2; if($s.loaded){$ready=$true; Write-Host ('[OK] Model ready: '+$s.algorithm); break}}catch{}; if((($i+1)%%30) -eq 0){Write-Host ('Waiting for model load... '+($i+1)+'/'+ $limit +' seconds')}; Start-Sleep -Seconds 1}; if(-not $ready){Write-Host 'Backend log:'; Get-Content 'backend/backend.stdout.log','backend/backend.stderr.log' -Tail 80; exit 1}"
 if errorlevel 1 (
   echo [ERROR] Model could not be loaded. See backend\backend.stderr.log
   pause
