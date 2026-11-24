@@ -81,7 +81,7 @@ if not exist "node_modules" (
 
 echo [3/4] Starting backend with the local model ZIP...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$pidFile='.backend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*uvicorn backend.app:app*'){Stop-Process -Id ([int]$old) -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.stdout.log' -RedirectStandardError '%CD%\backend\backend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
+  "$pidFile='.backend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*uvicorn backend.app:app*'){Stop-Process -Id ([int]$old) -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-u','-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.stdout.log' -RedirectStandardError '%CD%\backend\backend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
 if errorlevel 1 (
   echo [ERROR] Could not start backend.
   pause
@@ -89,7 +89,7 @@ if errorlevel 1 (
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ready=$false; for($i=0;$i -lt 45;$i++){try{$s=Invoke-RestMethod 'http://127.0.0.1:8000/api/model/status' -TimeoutSec 2; if($s.loaded){$ready=$true; Write-Host ('[OK] Model ready: '+$s.algorithm); break}}catch{}; Start-Sleep -Seconds 1}; if(-not $ready){Write-Host 'Backend log:'; Get-Content 'backend/backend.stdout.log','backend/backend.stderr.log' -Tail 30; exit 1}"
+  "$ready=$false; for($i=0;$i -lt 180;$i++){try{$s=Invoke-RestMethod 'http://127.0.0.1:8000/api/model/status' -TimeoutSec 2; if($s.loaded){$ready=$true; Write-Host ('[OK] Model ready: '+$s.algorithm); break}}catch{}; Start-Sleep -Seconds 1}; if(-not $ready){Write-Host 'Backend log:'; Get-Content 'backend/backend.stdout.log','backend/backend.stderr.log' -Tail 80; exit 1}"
 if errorlevel 1 (
   echo [ERROR] Model could not be loaded. See backend\backend.stderr.log
   pause
