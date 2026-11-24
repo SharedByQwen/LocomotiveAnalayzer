@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import time
+import traceback
 import zipfile
 from pathlib import Path
 from threading import RLock
@@ -40,12 +42,16 @@ class PredictionRequest(BaseModel):
 
 
 def _validate_model(model_bytes: bytes, metadata: dict[str, Any]):
+    started = time.perf_counter()
+    print(f"[LocomotiveAnalyzer] Validating ONNX model ({len(model_bytes):,} bytes)...", flush=True)
     if len(model_bytes) < 16:
         raise ValueError("ONNX model file is empty or invalid.")
     features = metadata.get("features")
     if not isinstance(features, list) or len(features) != EXPECTED_FEATURES:
         raise ValueError("metadata.json must declare exactly four model features.")
+    print("[LocomotiveAnalyzer] Creating ONNX Runtime session (this may take a while)...", flush=True)
     session = ort.InferenceSession(model_bytes, providers=["CPUExecutionProvider"])
+    print(f"[LocomotiveAnalyzer] ONNX session created in {time.perf_counter() - started:.1f}s.", flush=True)
     inputs = session.get_inputs()
     outputs = session.get_outputs()
     if len(inputs) != 1 or len(outputs) != 1:
@@ -54,6 +60,8 @@ def _validate_model(model_bytes: bytes, metadata: dict[str, Any]):
 
 
 def _load_bundle_bytes(bundle_bytes: bytes, persist: bool) -> dict[str, Any]:
+    started = time.perf_counter()
+    print(f"[LocomotiveAnalyzer] Opening model ZIP ({len(bundle_bytes):,} bytes)...", flush=True)
     with zipfile.ZipFile(io.BytesIO(bundle_bytes)) as archive:
         files = [item for item in archive.infolist() if not item.is_dir()]
         model_items = [item for item in files if Path(item.filename).name.lower() == "locomotive_model.onnx"]
@@ -66,11 +74,14 @@ def _load_bundle_bytes(bundle_bytes: bytes, persist: bool) -> dict[str, Any]:
         metadata_info = min(metadata_items, key=lambda item: len(item.filename))
         if model_info.file_size > 500 * 1024 * 1024:
             raise ValueError("ONNX model inside ZIP exceeds 500 MB.")
+        print(f"[LocomotiveAnalyzer] Extracting ONNX: {model_info.filename} ({model_info.file_size:,} bytes)...", flush=True)
         model_bytes = archive.read(model_info)
+        print(f"[LocomotiveAnalyzer] ONNX extracted; reading metadata: {metadata_info.filename}", flush=True)
         metadata = json.loads(archive.read(metadata_info).decode("utf-8-sig"))
         if not isinstance(metadata, dict):
             raise ValueError("metadata.json must contain a JSON object.")
 
+    print("[LocomotiveAnalyzer] ZIP contents validated. Starting ONNX load...", flush=True)
     session = _validate_model(model_bytes, metadata)
     if persist:
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -86,17 +97,21 @@ def _load_bundle_bytes(bundle_bytes: bytes, persist: bool) -> dict[str, Any]:
 
     with _lock:
         _state.update(session=session, metadata=metadata, model_bytes=model_bytes)
+    print(f"[LocomotiveAnalyzer] Model loaded successfully in {time.perf_counter() - started:.1f}s.", flush=True)
 
     return metadata
 
 
 def _load_existing() -> None:
+    print(f"[LocomotiveAnalyzer] Startup model search: {BUNDLE_PATH}", flush=True)
     if BUNDLE_PATH.is_file():
+        print(f"[LocomotiveAnalyzer] ZIP found ({BUNDLE_PATH.stat().st_size:,} bytes). Loading...", flush=True)
         try:
             _load_bundle_bytes(BUNDLE_PATH.read_bytes(), persist=False)
             return
         except Exception as exc:
-            print(f"[LocomotiveAnalyzer] Saved ZIP could not be loaded: {exc}")
+            print(f"[LocomotiveAnalyzer] Saved ZIP could not be loaded: {exc}", flush=True)
+            traceback.print_exc()
     if MODEL_PATH.is_file() and METADATA_PATH.is_file():
         try:
             model_bytes = MODEL_PATH.read_bytes()
@@ -105,13 +120,16 @@ def _load_existing() -> None:
             with _lock:
                 _state.update(session=session, metadata=metadata, model_bytes=model_bytes)
         except Exception as exc:
-            print(f"[LocomotiveAnalyzer] Saved ONNX model could not be loaded: {exc}")
+            print(f"[LocomotiveAnalyzer] Saved ONNX model could not be loaded: {exc}", flush=True)
+            traceback.print_exc()
 
 
 @app.on_event("startup")
 def startup() -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    print("[LocomotiveAnalyzer] Backend startup initiated.", flush=True)
     _load_existing()
+    print("[LocomotiveAnalyzer] Backend startup complete.", flush=True)
 
 
 @app.get("/api/health")
