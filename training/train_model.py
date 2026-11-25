@@ -208,7 +208,7 @@ def train(dataset_path: Path) -> None:
 
     metadata = {
         "model_name": "locomotive-capability-regressor",
-        "model_version": "0.2.0",
+        "model_version": "0.3.0",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "algorithm": "RandomForestRegressor",
         "model_parameters": {
