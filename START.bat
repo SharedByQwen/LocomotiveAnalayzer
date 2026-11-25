@@ -14,9 +14,16 @@ set "VENV_PY=%CD%\.venv\Scripts\python.exe"
 
 where py >nul 2>nul
 if not errorlevel 1 (
-  py -3.12 --version >nul 2>nul && set "PY_LAUNCHER=py -3.12"
-  if not defined PY_LAUNCHER py -3.11 --version >nul 2>nul && set "PY_LAUNCHER=py -3.11"
-  if not defined PY_LAUNCHER py -3 --version >nul 2>nul && set "PY_LAUNCHER=py -3"
+  py -3.12 --version >nul 2>nul
+  if not errorlevel 1 set "PY_LAUNCHER=py -3.12"
+  if not defined PY_LAUNCHER (
+    py -3.11 --version >nul 2>nul
+    if not errorlevel 1 set "PY_LAUNCHER=py -3.11"
+  )
+  if not defined PY_LAUNCHER (
+    py -3 --version >nul 2>nul
+    if not errorlevel 1 set "PY_LAUNCHER=py -3"
+  )
 )
 
 if not defined PY_LAUNCHER (
