@@ -128,7 +128,10 @@ def _load_existing() -> None:
 def startup() -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     print("[LocomotiveAnalyzer] Backend startup initiated.", flush=True)
-    _load_existing()
+    if os.getenv("LOCOMOTIVE_SKIP_MODEL_LOAD", "").strip() == "1":
+        print("[LocomotiveAnalyzer] Model loading skipped by LOCOMOTIVE_SKIP_MODEL_LOAD=1. API/UI-only mode.", flush=True)
+    else:
+        _load_existing()
     print("[LocomotiveAnalyzer] Backend startup complete.", flush=True)
 
 
