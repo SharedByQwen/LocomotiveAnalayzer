@@ -70,7 +70,7 @@ if errorlevel 1 (
   )
 )
 
-echo [1/5] Preparing Python environment...
+echo [1/6] Preparing Python environment...
 if not exist "%VENV_PY%" (
   call %PY_LAUNCHER% -m venv .venv
   if errorlevel 1 (
@@ -99,7 +99,7 @@ if errorlevel 1 (
   type nul > ".venv\.requirements-installed"
 )
 
-echo [2/5] Preparing frontend dependencies...
+echo [2/6] Preparing frontend dependencies...
 if not exist "node_modules" (
   call npm install
   if errorlevel 1 (
@@ -144,7 +144,7 @@ if errorlevel 1 (
 
 echo [4/6] Starting backend (model loads in background)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$pidFile='.backend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*uvicorn backend.app:app*'){Stop-Process -Id ([int]$old) -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-u','-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.stdout.log' -RedirectStandardError '%CD%\backend\backend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
+  "$pidFiles=@('.backend.pid','.backend-ui-only.pid'); foreach($pidFile in $pidFiles){if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*uvicorn backend.app:app*'){Stop-Process -Id ([int]$old) -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}}; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-u','-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.stdout.log' -RedirectStandardError '%CD%\backend\backend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
 if errorlevel 1 (
   echo [ERROR] Could not start backend.
   pause
@@ -161,18 +161,28 @@ if errorlevel 1 (
 )
 
 echo [6/6] Starting frontend...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$pidFile='.frontend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*npm run dev*'){Stop-Process -Id ([int]$old) -Force}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\\frontend.stdout.log' -RedirectStandardError '%CD%\\frontend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
+if errorlevel 1 (
+  echo [ERROR] Could not start frontend.
+  pause
+  exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ready=$false; for($i=0;$i -lt 30;$i++){try{$r=Invoke-WebRequest 'http://127.0.0.1:5173' -TimeoutSec 2; if($r.StatusCode -eq 200){$ready=$true;break}}catch{}; Start-Sleep -Seconds 1}; if(-not $ready){Write-Host 'Frontend logs:'; Get-Content 'frontend.stdout.log','frontend.stderr.log' -Tail 60; exit 1}"
+if errorlevel 1 (
+  echo [ERROR] Frontend did not become ready.
+  pause
+  exit /b 1
+)
+
 echo.
 echo Backend: http://127.0.0.1:8000
 echo App:     http://127.0.0.1:5173
-echo.
-echo Model loading runs in the background. The app stays available if no model is installed.
+echo Model loading runs in the background. The UI remains available while it loads.
 echo Keep this window open while using the app.
 echo.
 start "" http://127.0.0.1:5173
-call npm run dev
-set "RESULT=%ERRORLEVEL%"
-
-echo.
-if not "%RESULT%"=="0" echo [ERROR] Frontend stopped with exit code %RESULT%.
 pause
-exit /b %RESULT%
+exit /b 0
