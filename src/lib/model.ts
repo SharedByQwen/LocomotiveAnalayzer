@@ -37,7 +37,8 @@ export async function loadModel():Promise<{metadata:ModelMetadata}>{
     training_rows:status.training_rows,
     features:status.features || [],
     target:"",
-    metrics:status.metrics
+    metrics:status.metrics,
+    load_elapsed_seconds:status.load_elapsed_seconds ?? undefined
   };
   diagnostics.info("BACKEND_MODEL_READY",{version:metadata.model_version,algorithm:metadata.algorithm,loadSeconds:status.load_elapsed_seconds});
   return {metadata};
