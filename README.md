@@ -41,7 +41,12 @@ Starter به‌ترتیب:
 
 ## آموزش مدل
 
-دیتاست را در `training/data/LocomotivDataSet.xlsx` قرار بده. سپس راهنمای `training/README.md` را دنبال کن. اسکریپت آموزش پس از ساخت ONNX، فایل ZIP آماده نصب را نیز در `backend/models/model_bundle.zip` ایجاد می‌کند.
+تمام ابزارهای آموزش در پوشه [`training/`](training/) قرار دارند:
+- رابط گرافیکی آموزش روی Windows: [`training/TRAIN_LOCAL.bat`](training/TRAIN_LOCAL.bat)
+- Notebook آموزش Google Colab: [`training/colab_train.ipynb`](training/colab_train.ipynb)
+- راهنمای پارامترها و گزارش خودکار آخرین آموزش: [`training/README.md`](training/README.md)
+
+هر دو روش از هسته مشترک `training/train_model.py` استفاده می‌کنند. پس از آموزش موفق، مدل ONNX، بسته ZIP آماده نصب، گزارش معیارها و بخش نتایج README به‌روزرسانی می‌شوند.
 
 ## محدودیت اعتبار
 
