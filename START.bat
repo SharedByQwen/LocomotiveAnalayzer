@@ -21,7 +21,7 @@ if not errorlevel 1 (
     if not errorlevel 1 set "PY_LAUNCHER=py -3.11"
   )
   if not defined PY_LAUNCHER (
-    py -3 --version >nul 2>nul
+    py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" >nul 2>nul
     if not errorlevel 1 set "PY_LAUNCHER=py -3"
   )
 )
