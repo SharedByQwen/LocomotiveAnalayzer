@@ -1,4 +1,4 @@
-import {useMemo,useState} from "react";
+import {useEffect,useMemo,useState} from "react";
 import type {AnalysisRecord,ModelMetadata} from "./types";
 import {diagnostics} from "./lib/logger";
 import {loadModel,predict,uploadModelZip} from "./lib/model";
@@ -11,10 +11,11 @@ export default function App(){
  const [status,setStatus]=useState<"unknown"|"loading"|"ready"|"error">("unknown");
  const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const [score,setScore]=useState<number|null>(null); const [runId,setRunId]=useState("");
  const sorted=useMemo(()=>[...records].sort((a,b)=>a.date.localeCompare(b.date)),[records]);
+ useEffect(()=>{void checkModel();},[]);
  function update(id:string,key:keyof AnalysisRecord,value:string){setRecords(old=>old.map(r=>r.id===id?{...r,[key]:value,prediction:undefined}:r));setScore(null);}
  function add(){setRecords(old=>[...old,makeRecord()]);setScore(null);}
  function remove(id:string){setRecords(old=>old.length>1?old.filter(r=>r.id!==id):old);setScore(null);}
- async function checkModel(){setStatus("loading");setError("");try{const m=await loadModel();setMetadata(m.metadata);setStatus("ready");}catch(e){const msg=e instanceof Error?e.message:String(e);setError(msg);setStatus("error");diagnostics.error("MODEL_STATUS_ERROR",{message:msg});}}
+ async function checkModel(){setStatus("loading");setError("");try{const m=await loadModel();setMetadata(m.metadata);setStatus("ready");}catch(e){const msg=e instanceof Error?e.message:String(e);setError("مدل در دسترس نیست؛ برنامه در حالت بدون مدل اجرا شده است.");setStatus("error");diagnostics.error("MODEL_STATUS_ERROR",{message:msg});}}
  async function handleModelZip(file?:File){if(!file)return;setStatus("loading");setError("");try{await uploadModelZip(file);const m=await loadModel();setMetadata(m.metadata);setStatus("ready");diagnostics.info("MODEL_INSTALL_SUCCEEDED",{fileName:file.name});}catch(e){const msg=e instanceof Error?e.message:String(e);setError(msg);setStatus("error");diagnostics.error("MODEL_INSTALL_FAILED",{message:msg});}}
  function validate():string|null{
   if(!records.length)return "حداقل یک رکورد لازم است.";
