@@ -2,17 +2,16 @@
 
 این سرویس مدل ONNX را در Backend بارگذاری می‌کند و پیش‌بینی را از طریق HTTP API انجام می‌دهد.
 
-فایل مدل را دستی در مسیر زیر قرار بده:
-
+فایل مدل:
 `backend/models/model_bundle.zip`
 
-ZIP باید شامل `locomotive_model.onnx` و `metadata.json` باشد. فایل‌ها می‌توانند داخل زیرپوشه ZIP هم باشند؛ نیازی به Extract نیست.
+ZIP باید شامل `locomotive_model.onnx` و `metadata.json` باشد. فایل‌ها می‌توانند داخل زیرپوشه ZIP هم باشند.
 
-برای اجرای کل برنامه فقط از اسکریپت واحد زیر استفاده کن:
+Backend هنگام Startup مدل را در Thread پس‌زمینه بارگذاری می‌کند؛ بنابراین Health API و رابط کاربری تا پایان بارگذاری معطل نمی‌مانند. وضعیت‌های مدل از طریق `GET /api/model/status` قابل مشاهده‌اند: `loading`، `ready`، `missing` و `error`.
 
-`scripts/start_windows.bat`
+برای اجرای کل برنامه در Windows فقط از فایل ریشه پروژه استفاده کن:
 
-Backend هنگام شروع ZIP را اعتبارسنجی و مدل را در حافظه بارگذاری می‌کند. ZIP برای اجراهای بعدی روی دیسک باقی می‌ماند.
+`START.bat`
 
 API:
 - `GET /api/health`
