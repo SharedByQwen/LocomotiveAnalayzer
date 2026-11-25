@@ -144,7 +144,7 @@ if errorlevel 1 (
 
 echo [4/6] Starting backend (model loads in background)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$pidFiles=@('.backend.pid','.backend-ui-only.pid'); foreach($pidFile in $pidFiles){if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*uvicorn backend.app:app*'){Stop-Process -Id ([int]$old) -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}}; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-u','-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.stdout.log' -RedirectStandardError '%CD%\backend\backend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
+  "$pidFiles=@('.backend.pid','.backend-ui-only.pid'); foreach($pidFile in $pidFiles){if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*uvicorn backend.app:app*'){Stop-Process -Id ([int]$old) -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}}; $pidFile='.backend.pid'; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-u','-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.stdout.log' -RedirectStandardError '%CD%\backend\backend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
 if errorlevel 1 (
   echo [ERROR] Could not start backend.
   pause
@@ -162,7 +162,7 @@ if errorlevel 1 (
 
 echo [6/6] Starting frontend...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$pidFile='.frontend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*npm run dev*'){Stop-Process -Id ([int]$old) -Force}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\\frontend.stdout.log' -RedirectStandardError '%CD%\\frontend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
+  "$pidFile='.frontend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*npm run dev*'){Stop-Process -Id ([int]$old) -Force}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\frontend.stdout.log' -RedirectStandardError '%CD%\frontend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
 if errorlevel 1 (
   echo [ERROR] Could not start frontend.
   pause
