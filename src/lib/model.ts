@@ -1,7 +1,19 @@
 import type {ModelMetadata} from "../types";
 import {diagnostics} from "./logger";
 
-type ModelStatus = {loaded:boolean; model_name?:string; model_version?:string; algorithm?:string; training_rows?:number; features?:string[]; metrics?:ModelMetadata["metrics"]; message?:string};
+type ModelStatus = {
+  loaded:boolean;
+  state?:"missing"|"loading"|"ready"|"error";
+  error?:string|null;
+  load_elapsed_seconds?:number|null;
+  model_name?:string;
+  model_version?:string;
+  algorithm?:string;
+  training_rows?:number;
+  features?:string[];
+  metrics?:ModelMetadata["metrics"];
+  message?:string;
+};
 
 async function apiError(response:Response):Promise<Error>{
   let message = "HTTP " + response.status;
@@ -13,7 +25,11 @@ export async function loadModel():Promise<{metadata:ModelMetadata}>{
   const response = await fetch("/api/model/status");
   if(!response.ok) throw await apiError(response);
   const status = await response.json() as ModelStatus;
-  if(!status.loaded) throw new Error(status.message || "No model is installed on the backend.");
+  if(!status.loaded){
+    if(status.state === "loading") throw new Error("MODEL_LOADING");
+    if(status.state === "error") throw new Error(status.error || "Model loading failed.");
+    throw new Error(status.message || "No model is installed on the backend.");
+  }
   const metadata:ModelMetadata = {
     model_name:status.model_name || "locomotive-capability-regressor",
     model_version:status.model_version || "unknown",
@@ -23,7 +39,7 @@ export async function loadModel():Promise<{metadata:ModelMetadata}>{
     target:"",
     metrics:status.metrics
   };
-  diagnostics.info("BACKEND_MODEL_READY",{version:metadata.model_version,algorithm:metadata.algorithm});
+  diagnostics.info("BACKEND_MODEL_READY",{version:metadata.model_version,algorithm:metadata.algorithm,loadSeconds:status.load_elapsed_seconds});
   return {metadata};
 }
 
