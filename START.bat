@@ -47,7 +47,7 @@ if not defined PY_LAUNCHER (
     py -3.12 --version >nul 2>nul
     if not errorlevel 1 set "PY_LAUNCHER=py -3.12"
   )
-  if not defined PY_LAUNCHER if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set "PY_LAUNCHER=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+  if not defined PY_LAUNCHER if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set "PY_LAUNCHER=""%LOCALAPPDATA%\Programs\Python\Python312\python.exe"""
   if not defined PY_LAUNCHER (
     echo [ERROR] Python was installed but could not be detected.
     pause
