@@ -85,8 +85,8 @@ def update_training_readme(report: dict, metadata: dict, model_path: Path, bundl
         "skl2onnx": __import__("skl2onnx").__version__,
         "ONNX": __import__("onnx").__version__,
     }
-    parameter_lines = "\n".join(f"| \`{key}\` | \`{value}\` |" for key, value in params.items())
-    library_lines = "\n".join(f"| {name} | \`{version}\` |" for name, version in libraries.items())
+    parameter_lines = "\n".join(f"| `{key}` | `{value}` |" for key, value in params.items())
+    library_lines = "\n".join(f"| {name} | `{version}` |" for name, version in libraries.items())
     updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     section = f"""{start}
 ## آخرین گزارش آموزش (تولید خودکار)
@@ -94,18 +94,18 @@ def update_training_readme(report: dict, metadata: dict, model_path: Path, bundl
 > این بخش پس از هر آموزش موفق به‌روزرسانی می‌شود. زمان گزارش: **{updated_at}**
 
 ### داده و تقسیم‌بندی
-- فایل داده: \`{report['dataset_file']}\` — شیت \`{report['worksheet']}\`
+- فایل داده: `{report['dataset_file']}` — شیت `{report['worksheet']}`
 - تعداد ردیف معتبر: **{report['usable_rows']:,}**
 - نسبت آموزش به آزمون: **{(1-report['test_size'])*100:.0f}% / {report['test_size']*100:.0f}%**
 - تعداد ردیف آموزش: **{report['evaluation_train_rows']:,}**
 - تعداد ردیف آزمون: **{report['evaluation_test_rows']:,}**
-- روش تقسیم: \`{report['evaluation_method']}\` — seed: \`{report['random_state']}\`
+- روش تقسیم: `{report['evaluation_method']}` — seed: `{report['random_state']}`
 
 ### الگوریتم و پارامترهای مدل
 - الگوریتم: **{metadata['algorithm']}**
 - نوع مدل: مدل یادگیری ماشین مبتنی بر درخت؛ **شبکه عصبی استفاده نشده است**.
 - ورودی‌ها: {len(metadata['features'])} ویژگی عددی
-- خروجی هدف: \`{metadata['target']}\`
+- خروجی هدف: `{metadata['target']}`
 
 | پارامتر | مقدار |
 |---|---:|
@@ -124,8 +124,8 @@ def update_training_readme(report: dict, metadata: dict, model_path: Path, bundl
 {library_lines}
 
 ### خروجی استقرار
-- فایل ONNX: \`{model_path.relative_to(ROOT).as_posix()}\` — **{model_path.stat().st_size:,} bytes**
-- بسته ZIP: \`{bundle_path.relative_to(ROOT).as_posix()}\` — **{bundle_path.stat().st_size:,} bytes**
+- فایل ONNX: `{model_path.relative_to(ROOT).as_posix()}` — **{model_path.stat().st_size:,} bytes**
+- بسته ZIP: `{bundle_path.relative_to(ROOT).as_posix()}` — **{bundle_path.stat().st_size:,} bytes**
 - تعداد ردیف استفاده‌شده برای آموزش مدل نهایی: **{metadata['final_fit_rows']:,}**
 
 ### تفسیر و محدودیت
