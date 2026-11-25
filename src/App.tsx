@@ -11,11 +11,33 @@ export default function App(){
  const [status,setStatus]=useState<"unknown"|"loading"|"ready"|"error">("unknown");
  const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const [score,setScore]=useState<number|null>(null); const [runId,setRunId]=useState("");
  const sorted=useMemo(()=>[...records].sort((a,b)=>a.date.localeCompare(b.date)),[records]);
- useEffect(()=>{void checkModel();},[]);
+ useEffect(()=>{
+  let active=true;
+  let timer:number|undefined;
+  const poll=async()=>{
+   try{
+    const m=await loadModel();
+    if(active){setMetadata(m.metadata);setStatus("ready");setError("");}
+   }catch(e){
+    const msg=e instanceof Error?e.message:String(e);
+    if(msg==="MODEL_LOADING"){
+     if(active){setStatus("loading");timer=window.setTimeout(()=>void poll(),2500);}
+     return;
+    }
+    if(active){
+     setError("مدل در دسترس نیست؛ برنامه در حالت بدون مدل اجرا شده است.");
+     setStatus("error");
+     diagnostics.error("MODEL_STATUS_ERROR",{message:msg});
+    }
+   }
+  };
+  void poll();
+  return ()=>{active=false;if(timer!==undefined)window.clearTimeout(timer);};
+ },[]);
  function update(id:string,key:keyof AnalysisRecord,value:string){setRecords(old=>old.map(r=>r.id===id?{...r,[key]:value,prediction:undefined}:r));setScore(null);}
  function add(){setRecords(old=>[...old,makeRecord()]);setScore(null);}
  function remove(id:string){setRecords(old=>old.length>1?old.filter(r=>r.id!==id):old);setScore(null);}
- async function checkModel(){setStatus("loading");setError("");try{const m=await loadModel();setMetadata(m.metadata);setStatus("ready");}catch(e){const msg=e instanceof Error?e.message:String(e);setError("مدل در دسترس نیست؛ برنامه در حالت بدون مدل اجرا شده است.");setStatus("error");diagnostics.error("MODEL_STATUS_ERROR",{message:msg});}}
+ async function checkModel(){setStatus("loading");setError("");try{const m=await loadModel();setMetadata(m.metadata);setStatus("ready");}catch(e){const msg=e instanceof Error?e.message:String(e);if(msg==="MODEL_LOADING"){setStatus("loading");return;}setError("مدل در دسترس نیست؛ برنامه در حالت بدون مدل اجرا شده است.");setStatus("error");diagnostics.error("MODEL_STATUS_ERROR",{message:msg});}}
  async function handleModelZip(file?:File){if(!file)return;setStatus("loading");setError("");try{await uploadModelZip(file);const m=await loadModel();setMetadata(m.metadata);setStatus("ready");diagnostics.info("MODEL_INSTALL_SUCCEEDED",{fileName:file.name});}catch(e){const msg=e instanceof Error?e.message:String(e);setError(msg);setStatus("error");diagnostics.error("MODEL_INSTALL_FAILED",{message:msg});}}
  function validate():string|null{
   if(!records.length)return "حداقل یک رکورد لازم است.";
@@ -42,7 +64,7 @@ export default function App(){
  }
  function exportLogs(){const blob=new Blob([diagnostics.export()],{type:"application/json;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="locomotive-diagnostics-"+Date.now()+".json";a.click();URL.revokeObjectURL(url);diagnostics.info("DIAGNOSTICS_EXPORTED");}
  return <main className="shell">
-  <header className="header"><div><div className="eyebrow">LOCAL ANALYSIS WORKSPACE</div><h1>تحلیلگر قابلیت سیر لکوموتیو</h1><p>ورود رکوردهای مستقل، پیش‌بینی مدل و محاسبه امتیاز نهایی</p></div><div className={"status "+status}>{status==="ready"?"مدل آماده است":status==="loading"?"در حال بارگذاری":status==="error"?"خطای مدل":"وضعیت مدل بررسی نشده"}</div></header>
+  <header className="header"><div><div className="eyebrow">LOCAL ANALYSIS WORKSPACE</div><h1>تحلیلگر قابلیت سیر لکوموتیو</h1><p>ورود رکوردهای مستقل، پیش‌بینی مدل و محاسبه امتیاز نهایی</p></div><div className={"status "+status}>{status==="ready"?"مدل آماده است":status==="loading"?"در حال بارگذاری مدل در پس‌زمینه...":status==="error"?"خطای مدل":"وضعیت مدل بررسی نشده"}</div></header>
   
   <section className="panel model"><div><h2>وضعیت مدل</h2><p>{metadata?metadata.algorithm+" · نسخه "+metadata.model_version+" · "+(metadata.training_rows??"?")+" رکورد آموزشی":"فایل ZIP خروجی Colab را از همین‌جا نصب کن یا در backend/models/model_bundle.zip قرار بده."}</p>{metadata?.metrics&&<p>MAE {metadata.metrics.mae?.toFixed(4)} · RMSE {metadata.metrics.rmse?.toFixed(4)} · R² {metadata.metrics.r2?.toFixed(4)}</p>}</div><div className="model-actions"><button className="secondary" onClick={checkModel} disabled={status==="loading"}>بررسی وضعیت مدل</button><label className="secondary upload-label">نصب مدل از ZIP<input type="file" accept=".zip,application/zip" onChange={e=>{void handleModelZip(e.target.files?.[0]);e.currentTarget.value="";}} disabled={status==="loading"}/></label></div></section>
   <div className="section-title"><div><h2>رکوردهای تحلیل</h2><p>تاریخ فقط برای مرتب‌سازی است؛ شماره لکوموتیو فقط شناسه است. مدل فقط چهار ویژگی زیر را دریافت می‌کند.</p></div><button className="secondary" onClick={add}>＋ افزودن رکورد</button></div>
