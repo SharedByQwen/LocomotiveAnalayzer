@@ -14,6 +14,7 @@ from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
+from sklearn import __version__ as sklearn_version
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
@@ -65,6 +66,79 @@ def calculate_metrics(actual: pd.Series, predicted: np.ndarray) -> dict[str, flo
         "r2": float(r2_score(actual, predicted)),
     }
 
+
+
+def update_training_readme(report: dict, metadata: dict, model_path: Path, bundle_path: Path) -> None:
+    """Refresh the generated experiment section without overwriting the guide."""
+    readme_path = ROOT / "training" / "README.md"
+    content = readme_path.read_text(encoding="utf-8") if readme_path.exists() else "# Training\n"
+    start = "<!-- AUTO-TRAINING-REPORT:START -->"
+    end = "<!-- AUTO-TRAINING-REPORT:END -->"
+    params = metadata["model_parameters"]
+    metrics = report["model"]["metrics"]
+    baseline = report["baseline"]["metrics"]
+    libraries = {
+        "Python": sys.version.split()[0],
+        "NumPy": np.__version__,
+        "Pandas": pd.__version__,
+        "scikit-learn": sklearn_version,
+        "skl2onnx": __import__("skl2onnx").__version__,
+        "ONNX": __import__("onnx").__version__,
+    }
+    parameter_lines = "\n".join(f"| \`{key}\` | \`{value}\` |" for key, value in params.items())
+    library_lines = "\n".join(f"| {name} | \`{version}\` |" for name, version in libraries.items())
+    updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    section = f"""{start}
+## آخرین گزارش آموزش (تولید خودکار)
+
+> این بخش پس از هر آموزش موفق به‌روزرسانی می‌شود. زمان گزارش: **{updated_at}**
+
+### داده و تقسیم‌بندی
+- فایل داده: \`{report['dataset_file']}\` — شیت \`{report['worksheet']}\`
+- تعداد ردیف معتبر: **{report['usable_rows']:,}**
+- نسبت آموزش به آزمون: **{(1-report['test_size'])*100:.0f}% / {report['test_size']*100:.0f}%**
+- تعداد ردیف آموزش: **{report['evaluation_train_rows']:,}**
+- تعداد ردیف آزمون: **{report['evaluation_test_rows']:,}**
+- روش تقسیم: \`{report['evaluation_method']}\` — seed: \`{report['random_state']}\`
+
+### الگوریتم و پارامترهای مدل
+- الگوریتم: **{metadata['algorithm']}**
+- نوع مدل: مدل یادگیری ماشین مبتنی بر درخت؛ **شبکه عصبی استفاده نشده است**.
+- ورودی‌ها: {len(metadata['features'])} ویژگی عددی
+- خروجی هدف: \`{metadata['target']}\`
+
+| پارامتر | مقدار |
+|---|---:|
+{parameter_lines}
+
+### معیارهای ارزیابی روی داده آزمون
+| معیار | مدل | خط پایه (میانگین) |
+|---|---:|---:|
+| MAE | {metrics['mae']:.6f} | {baseline['mae']:.6f} |
+| RMSE | {metrics['rmse']:.6f} | {baseline['rmse']:.6f} |
+| R² | {metrics['r2']:.6f} | {baseline['r2']:.6f} |
+
+### کتابخانه‌ها و نسخه‌ها
+| کتابخانه | نسخه |
+|---|---:|
+{library_lines}
+
+### خروجی استقرار
+- فایل ONNX: \`{model_path.relative_to(ROOT).as_posix()}\` — **{model_path.stat().st_size:,} bytes**
+- بسته ZIP: \`{bundle_path.relative_to(ROOT).as_posix()}\` — **{bundle_path.stat().st_size:,} bytes**
+- تعداد ردیف استفاده‌شده برای آموزش مدل نهایی: **{metadata['final_fit_rows']:,}**
+
+### تفسیر و محدودیت
+- این معیارها فقط روی بخش آزمون همین دیتاست محاسبه شده‌اند؛ برای مقایسه نسخه‌ها مفیدند اما جای آزمون زمانی یا اعتبارسنجی مستقل را نمی‌گیرند.
+- مستندات دیتاست فعلی آن را مصنوعی/تصادفی توصیف می‌کند؛ بنابراین این نتایج اثبات‌کننده دقت پیش‌بینی خرابی واقعی لکوموتیو نیستند.
+{end}"""
+    if start in content and end in content:
+        before, remainder = content.split(start, 1)
+        _, after = remainder.split(end, 1)
+        content = before + section + after
+    else:
+        content = content.rstrip() + "\n\n" + section + "\n"
+    readme_path.write_text(content, encoding="utf-8")
 
 def train(dataset_path: Path) -> None:
     setup_logging()
@@ -257,6 +331,8 @@ def train(dataset_path: Path) -> None:
         "MODEL_EXPORTED | path=%s bytes=%d final_fit_rows=%d bundle=%s bundle_bytes=%d",
         model_path, model_path.stat().st_size, len(x), bundle_path, bundle_path.stat().st_size,
     )
+    update_training_readme(evaluation_report, metadata, model_path, bundle_path)
+    logging.info("README_UPDATED | path=%s", ROOT / "training" / "README.md")
     logging.info("REPORT_EXPORTED | path=%s", output_dir / "evaluation_report.json")
     logging.info("TRAIN_COMPLETE | status=success")
 
