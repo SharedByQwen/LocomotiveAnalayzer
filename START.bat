@@ -15,7 +15,7 @@ set "VENV_PY=%CD%\.venv\Scripts\python.exe"
 where py >nul 2>nul
 if not errorlevel 1 (
   py -3.12 --version >nul 2>nul && set "PY_LAUNCHER=py -3.12"
-  if not defined PY_LAUNCHER py -3.11 --version >nul 2>nul && set "PY_LAUNCHER=py -3"
+  if not defined PY_LAUNCHER py -3.11 --version >nul 2>nul && set "PY_LAUNCHER=py -3.11"
   if not defined PY_LAUNCHER py -3 --version >nul 2>nul && set "PY_LAUNCHER=py -3"
 )
 
@@ -122,7 +122,27 @@ if not exist "node_modules" (
   )
 )
 
-echo [3/5] Starting backend (model loads in background)...
+echo [3/6] Running frontend tests...
+call npm test
+if errorlevel 1 (
+  echo [ERROR] Frontend tests failed.
+  pause
+  exit /b 1
+)
+call npm run build
+if errorlevel 1 (
+  echo [ERROR] Frontend production build failed.
+  pause
+  exit /b 1
+)
+"%VENV_PY%" -m compileall -q backend
+if errorlevel 1 (
+  echo [ERROR] Backend Python syntax check failed.
+  pause
+  exit /b 1
+)
+
+echo [4/6] Starting backend (model loads in background)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$pidFile='.backend.pid'; if(Test-Path $pidFile){$old=Get-Content $pidFile -ErrorAction SilentlyContinue; if($old){$proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$old) -ErrorAction SilentlyContinue; if($proc -and $proc.CommandLine -like '*uvicorn backend.app:app*'){Stop-Process -Id ([int]$old) -Force; Start-Sleep -Seconds 1}}; Remove-Item $pidFile -Force -ErrorAction SilentlyContinue}; $p=Start-Process -FilePath '%CD%\.venv\Scripts\python.exe' -ArgumentList '-u','-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8000' -WorkingDirectory '%CD%' -WindowStyle Minimized -RedirectStandardOutput '%CD%\backend\backend.stdout.log' -RedirectStandardError '%CD%\backend\backend.stderr.log' -PassThru; Set-Content -Path $pidFile -Value $p.Id"
 if errorlevel 1 (
@@ -131,7 +151,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [4/5] Waiting for backend health check...
+echo [5/6] Waiting for backend health check...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ready=$false; for($i=0;$i -lt 30;$i++){try{$h=Invoke-RestMethod 'http://127.0.0.1:8000/api/health' -TimeoutSec 2; if($h.status -eq 'ok'){$ready=$true;break}}catch{}; Start-Sleep -Seconds 1}; if(-not $ready){Write-Host 'Backend logs:'; Get-Content 'backend/backend.stdout.log','backend/backend.stderr.log' -Tail 60; exit 1}"
 if errorlevel 1 (
@@ -140,7 +160,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [5/5] Starting frontend...
+echo [6/6] Starting frontend...
 echo.
 echo Backend: http://127.0.0.1:8000
 echo App:     http://127.0.0.1:5173
