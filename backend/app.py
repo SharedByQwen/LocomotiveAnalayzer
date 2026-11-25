@@ -7,7 +7,7 @@ import time
 import traceback
 import zipfile
 from pathlib import Path
-from threading import RLock
+from threading import RLock, Thread
 from typing import Any
 
 import numpy as np
@@ -24,7 +24,7 @@ METADATA_PATH = MODEL_DIR / "metadata.json"
 MAX_UPLOAD_BYTES = 300 * 1024 * 1024
 EXPECTED_FEATURES = 4
 
-app = FastAPI(title="Locomotive Analyzer API", version="1.0.0")
+app = FastAPI(title="Locomotive Analyzer API", version="1.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -33,12 +33,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_state: dict[str, Any] = {"session": None, "metadata": None, "model_bytes": None}
+_state: dict[str, Any] = {
+    "session": None,
+    "metadata": None,
+    "model_bytes": None,
+    "load_state": "missing",
+    "load_error": None,
+    "load_started": None,
+    "load_elapsed_seconds": None,
+}
 _lock = RLock()
 
 
 class PredictionRequest(BaseModel):
     records: list[list[float]] = Field(min_length=1)
+
+
+def _set_load_state(state: str, error: str | None = None, elapsed: float | None = None) -> None:
+    with _lock:
+        _state["load_state"] = state
+        _state["load_error"] = error
+        if elapsed is not None:
+            _state["load_elapsed_seconds"] = round(elapsed, 2)
 
 
 def _validate_model(model_bytes: bytes, metadata: dict[str, Any]):
@@ -49,13 +65,28 @@ def _validate_model(model_bytes: bytes, metadata: dict[str, Any]):
     features = metadata.get("features")
     if not isinstance(features, list) or len(features) != EXPECTED_FEATURES:
         raise ValueError("metadata.json must declare exactly four model features.")
-    print("[LocomotiveAnalyzer] Creating ONNX Runtime session (this may take a while)...", flush=True)
-    session = ort.InferenceSession(model_bytes, providers=["CPUExecutionProvider"])
-    print(f"[LocomotiveAnalyzer] ONNX session created in {time.perf_counter() - started:.1f}s.", flush=True)
+
+    print("[LocomotiveAnalyzer] Creating ONNX Runtime session (CPU)...", flush=True)
+    options = ort.SessionOptions()
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    options.intra_op_num_threads = max(1, min(4, os.cpu_count() or 1))
+    options.inter_op_num_threads = 1
+    session = ort.InferenceSession(
+        model_bytes,
+        sess_options=options,
+        providers=["CPUExecutionProvider"],
+    )
+    elapsed = time.perf_counter() - started
+    print(f"[LocomotiveAnalyzer] ONNX session created in {elapsed:.2f}s.", flush=True)
+
     inputs = session.get_inputs()
     outputs = session.get_outputs()
     if len(inputs) != 1 or len(outputs) != 1:
         raise ValueError("The ONNX model must have exactly one input and one output.")
+    shape = inputs[0].shape
+    if len(shape) != 2 or (isinstance(shape[-1], int) and shape[-1] != EXPECTED_FEATURES):
+        raise ValueError(f"Expected ONNX input shape [batch, {EXPECTED_FEATURES}], got {shape}.")
     return session
 
 
@@ -76,12 +107,12 @@ def _load_bundle_bytes(bundle_bytes: bytes, persist: bool) -> dict[str, Any]:
             raise ValueError("ONNX model inside ZIP exceeds 500 MB.")
         print(f"[LocomotiveAnalyzer] Extracting ONNX: {model_info.filename} ({model_info.file_size:,} bytes)...", flush=True)
         model_bytes = archive.read(model_info)
-        print(f"[LocomotiveAnalyzer] ONNX extracted; reading metadata: {metadata_info.filename}", flush=True)
+        print(f"[LocomotiveAnalyzer] Reading metadata: {metadata_info.filename}", flush=True)
         metadata = json.loads(archive.read(metadata_info).decode("utf-8-sig"))
         if not isinstance(metadata, dict):
             raise ValueError("metadata.json must contain a JSON object.")
 
-    print("[LocomotiveAnalyzer] ZIP contents validated. Starting ONNX load...", flush=True)
+    print("[LocomotiveAnalyzer] ZIP validated. Starting ONNX Runtime load...", flush=True)
     session = _validate_model(model_bytes, metadata)
     if persist:
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -95,14 +126,22 @@ def _load_bundle_bytes(bundle_bytes: bytes, persist: bool) -> dict[str, Any]:
         os.replace(temp_metadata, METADATA_PATH)
         os.replace(temp_bundle, BUNDLE_PATH)
 
+    elapsed = time.perf_counter() - started
     with _lock:
-        _state.update(session=session, metadata=metadata, model_bytes=model_bytes)
-    print(f"[LocomotiveAnalyzer] Model loaded successfully in {time.perf_counter() - started:.1f}s.", flush=True)
-
+        _state.update(
+            session=session,
+            metadata=metadata,
+            model_bytes=model_bytes,
+            load_state="ready",
+            load_error=None,
+            load_elapsed_seconds=round(elapsed, 2),
+        )
+    print(f"[LocomotiveAnalyzer] Model loaded successfully in {elapsed:.2f}s.", flush=True)
     return metadata
 
 
 def _load_existing() -> None:
+    started = time.perf_counter()
     print(f"[LocomotiveAnalyzer] Startup model search: {BUNDLE_PATH}", flush=True)
     if BUNDLE_PATH.is_file():
         print(f"[LocomotiveAnalyzer] ZIP found ({BUNDLE_PATH.stat().st_size:,} bytes). Loading...", flush=True)
@@ -112,16 +151,35 @@ def _load_existing() -> None:
         except Exception as exc:
             print(f"[LocomotiveAnalyzer] Saved ZIP could not be loaded: {exc}", flush=True)
             traceback.print_exc()
+
     if MODEL_PATH.is_file() and METADATA_PATH.is_file():
         try:
             model_bytes = MODEL_PATH.read_bytes()
             metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
             session = _validate_model(model_bytes, metadata)
+            elapsed = time.perf_counter() - started
             with _lock:
-                _state.update(session=session, metadata=metadata, model_bytes=model_bytes)
+                _state.update(
+                    session=session,
+                    metadata=metadata,
+                    model_bytes=model_bytes,
+                    load_state="ready",
+                    load_error=None,
+                    load_elapsed_seconds=round(elapsed, 2),
+                )
+            print(f"[LocomotiveAnalyzer] Saved ONNX model loaded in {elapsed:.2f}s.", flush=True)
+            return
         except Exception as exc:
             print(f"[LocomotiveAnalyzer] Saved ONNX model could not be loaded: {exc}", flush=True)
             traceback.print_exc()
+            _set_load_state("error", str(exc), time.perf_counter() - started)
+            return
+
+    if BUNDLE_PATH.exists() or MODEL_PATH.exists() or METADATA_PATH.exists():
+        _set_load_state("error", "A model file exists but could not be loaded.", time.perf_counter() - started)
+    else:
+        _set_load_state("missing", None, time.perf_counter() - started)
+        print("[LocomotiveAnalyzer] No local model bundle found. UI will remain available.", flush=True)
 
 
 @app.on_event("startup")
@@ -129,10 +187,15 @@ def startup() -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     print("[LocomotiveAnalyzer] Backend startup initiated.", flush=True)
     if os.getenv("LOCOMOTIVE_SKIP_MODEL_LOAD", "").strip() == "1":
-        print("[LocomotiveAnalyzer] Model loading skipped by LOCOMOTIVE_SKIP_MODEL_LOAD=1. API/UI-only mode.", flush=True)
+        _set_load_state("missing")
+        print("[LocomotiveAnalyzer] Model loading skipped by environment setting.", flush=True)
     else:
-        _load_existing()
-    print("[LocomotiveAnalyzer] Backend startup complete.", flush=True)
+        with _lock:
+            _state["load_state"] = "loading"
+            _state["load_error"] = None
+            _state["load_started"] = time.time()
+        Thread(target=_load_existing, name="locomotive-model-loader", daemon=True).start()
+    print("[LocomotiveAnalyzer] Backend startup complete; model loading runs in background.", flush=True)
 
 
 @app.get("/api/health")
@@ -145,32 +208,45 @@ def model_status():
     with _lock:
         metadata = _state["metadata"]
         session = _state["session"]
+        state = _state["load_state"]
+        error = _state["load_error"]
+        elapsed = _state["load_elapsed_seconds"]
+    result: dict[str, Any] = {
+        "loaded": session is not None and metadata is not None,
+        "state": state,
+        "error": error,
+        "load_elapsed_seconds": elapsed,
+    }
     if session is None or metadata is None:
-        return {"loaded": False, "message": "No model is installed on the backend."}
-    return {
-        "loaded": True,
+        result["message"] = "Model is not available." if state != "loading" else "Model is loading."
+        return result
+    result.update({
         "model_name": metadata.get("model_name"),
         "model_version": metadata.get("model_version"),
         "algorithm": metadata.get("algorithm"),
         "training_rows": metadata.get("training_rows", metadata.get("final_fit_rows")),
         "features": metadata.get("features"),
         "metrics": metadata.get("metrics"),
-    }
+    })
+    return result
 
 
 @app.post("/api/model/upload")
 async def upload_model(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Please upload the Colab ZIP bundle.")
+        raise HTTPException(status_code=400, detail="Please upload the model ZIP bundle.")
     bundle_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(bundle_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="ZIP file exceeds the 300 MB upload limit.")
+    _set_load_state("loading")
     try:
         metadata = _load_bundle_bytes(bundle_bytes, persist=True)
-    except (zipfile.BadZipFile, json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError) as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid model ZIP: {exc}") from exc
+    except Exception as exc:
+        _set_load_state("error", str(exc))
+        raise HTTPException(status_code=400, detail=f"Invalid model ZIP or ONNX load failure: {exc}") from exc
     return {
         "loaded": True,
+        "state": "ready",
         "model_version": metadata.get("model_version"),
         "algorithm": metadata.get("algorithm"),
         "training_rows": metadata.get("training_rows", metadata.get("final_fit_rows")),
@@ -192,8 +268,10 @@ def predict(request: PredictionRequest):
 
     with _lock:
         session = _state["session"]
+        state = _state["load_state"]
     if session is None:
-        raise HTTPException(status_code=503, detail="No ONNX model is loaded. Upload the Colab ZIP first.")
+        detail = "The ONNX model is still loading." if state == "loading" else "No ONNX model is loaded. Upload a model ZIP first."
+        raise HTTPException(status_code=503, detail=detail)
 
     try:
         input_name = session.get_inputs()[0].name
