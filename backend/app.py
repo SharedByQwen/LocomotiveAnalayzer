@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import platform
+import sys
 import time
 import traceback
 import zipfile
@@ -186,6 +188,7 @@ def _load_existing() -> None:
 def startup() -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     print("[LocomotiveAnalyzer] Backend startup initiated.", flush=True)
+    print(f"[LocomotiveAnalyzer] SYSTEM | platform={platform.platform()} | python={sys.version.split()[0]} | cpu={platform.processor()} | logical_cpus={os.cpu_count()} | onnxruntime={ort.__version__} | providers={ort.get_available_providers()}", flush=True)
     if os.getenv("LOCOMOTIVE_SKIP_MODEL_LOAD", "").strip() == "1":
         _set_load_state("missing")
         print("[LocomotiveAnalyzer] Model loading skipped by environment setting.", flush=True)
