@@ -1,31 +1,56 @@
 from __future__ import annotations
 
 import collections
-import os
-import sys
 import time
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL = ROOT / "diagnostics" / "diagnostic_model.onnx"
+ZIP_PATH = ROOT / "backend" / "models" / "model_bundle.zip"
+OUT_DIR = ROOT / "diagnostics"
+MODEL = OUT_DIR / "graph_inspection_model.onnx"
+
+
+def extract_model() -> None:
+    if not ZIP_PATH.is_file():
+        raise FileNotFoundError(f"Model bundle not found: {ZIP_PATH}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(ZIP_PATH) as archive:
+        candidates = [
+            item for item in archive.infolist()
+            if not item.is_dir() and Path(item.filename).name.lower() == "locomotive_model.onnx"
+        ]
+        if not candidates:
+            raise FileNotFoundError("locomotive_model.onnx was not found inside model_bundle.zip")
+        item = min(candidates, key=lambda value: len(value.filename))
+        print(f"MODEL_ENTRY={item.filename}", flush=True)
+        print(f"MODEL_UNCOMPRESSED_BYTES={item.file_size}", flush=True)
+        started = time.perf_counter()
+        print("EXTRACT_BEGIN", flush=True)
+        with archive.open(item) as source, MODEL.open("wb") as target:
+            while chunk := source.read(8 * 1024 * 1024):
+                target.write(chunk)
+        print(f"EXTRACT_DONE bytes={MODEL.stat().st_size} elapsed={time.perf_counter()-started:.2f}s", flush=True)
 
 
 def main() -> int:
-    if not MODEL.is_file():
-        print(f"Model file not found: {MODEL}", flush=True)
-        print("Run scripts\\diagnose_model_load.bat first to extract it.", flush=True)
+    try:
+        extract_model()
+    except Exception as exc:
+        print(f"EXTRACT_ERROR={type(exc).__name__}: {exc}", flush=True)
         return 2
+
     try:
         import onnx
     except ImportError:
-        print("Missing ONNX parser. Install it with:", flush=True)
-        print(f'"{ROOT / ".venv" / "Scripts" / "python.exe"}" -m pip install onnx', flush=True)
+        print("ONNX_PARSER_MISSING", flush=True)
+        print("Install with: .venv\\Scripts\\python.exe -m pip install onnx", flush=True)
         return 3
 
     print(f"ONNX_PARSER_VERSION={onnx.__version__}", flush=True)
     print(f"FILE_SIZE={MODEL.stat().st_size}", flush=True)
     start = time.perf_counter()
-    print("PARSE_BEGIN (load graph without creating an ORT session)", flush=True)
+    print("PARSE_BEGIN (ONNX graph parse only; no ONNX Runtime session)", flush=True)
     model = onnx.load(str(MODEL), load_external_data=False)
     print(f"PARSE_DONE elapsed={time.perf_counter()-start:.2f}s", flush=True)
     graph = model.graph
@@ -48,10 +73,7 @@ def main() -> int:
             for attribute in node.attribute:
                 try:
                     value = onnx.helper.get_attribute_value(attribute)
-                    if isinstance(value, (list, tuple)):
-                        attrs[attribute.name] = len(value)
-                    else:
-                        attrs[attribute.name] = str(value)[:160]
+                    attrs[attribute.name] = len(value) if isinstance(value, (list, tuple)) else str(value)[:160]
                 except Exception as exc:
                     attrs[attribute.name] = f"attribute_read_error:{exc}"
             print(f"TREE_ENSEMBLE_NODE name={node.name!r} attributes={attrs}", flush=True)
