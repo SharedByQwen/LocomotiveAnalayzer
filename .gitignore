@@ -16,3 +16,10 @@ public/models/metadata.json
 Thumbs.db
 backend/models/*
 !backend/models/.gitkeep
+
+# Local runtime state
+backend/*.log
+frontend.*.log
+.backend*.pid
+.frontend.pid
+diagnostics/
