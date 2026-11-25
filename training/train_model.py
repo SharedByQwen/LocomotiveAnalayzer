@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import sys
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,9 +31,14 @@ TEST_SIZE = 0.20
 
 
 def make_model() -> RandomForestRegressor:
+    # A deliberately compact forest: bounded depth/leaf count keeps ONNX
+    # graph size and CPU session-initialization time practical on older laptops.
     return RandomForestRegressor(
-        n_estimators=160,
-        min_samples_leaf=2,
+        n_estimators=80,
+        max_depth=14,
+        min_samples_leaf=8,
+        max_leaf_nodes=128,
+        max_features=1.0,
         random_state=RANDOM_STATE,
         n_jobs=-1,
     )
@@ -139,8 +145,10 @@ def train(dataset_path: Path) -> None:
 
     output_dir = ROOT / "training" / "output"
     model_dir = ROOT / "public" / "models"
+    backend_model_dir = ROOT / "backend" / "models"
     output_dir.mkdir(parents=True, exist_ok=True)
     model_dir.mkdir(parents=True, exist_ok=True)
+    backend_model_dir.mkdir(parents=True, exist_ok=True)
 
     prediction_report = pd.DataFrame({
         "actual": y_test.to_numpy(),
@@ -203,6 +211,13 @@ def train(dataset_path: Path) -> None:
         "model_version": "0.2.0",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "algorithm": "RandomForestRegressor",
+        "model_parameters": {
+            "n_estimators": 80,
+            "max_depth": 14,
+            "min_samples_leaf": 8,
+            "max_leaf_nodes": 128,
+            "max_features": 1.0,
+        },
         "features": FEATURES,
         "target": TARGET,
         "input_name": "features",
@@ -226,14 +241,21 @@ def train(dataset_path: Path) -> None:
             "Metrics are diagnostic only and do not establish operational validity."
         ),
     }
-    (model_dir / "metadata.json").write_text(
+    metadata_path = model_dir / "metadata.json"
+    metadata_path.write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
+    # Create the exact ZIP format consumed by the local application.
+    bundle_path = backend_model_dir / "model_bundle.zip"
+    with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as bundle:
+        bundle.write(model_path, arcname="locomotive_model.onnx")
+        bundle.write(metadata_path, arcname="metadata.json")
+
     logging.info(
-        "MODEL_EXPORTED | path=%s bytes=%d final_fit_rows=%d",
-        model_path, model_path.stat().st_size, len(x),
+        "MODEL_EXPORTED | path=%s bytes=%d final_fit_rows=%d bundle=%s bundle_bytes=%d",
+        model_path, model_path.stat().st_size, len(x), bundle_path, bundle_path.stat().st_size,
     )
     logging.info("REPORT_EXPORTED | path=%s", output_dir / "evaluation_report.json")
     logging.info("TRAIN_COMPLETE | status=success")
